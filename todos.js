@@ -2,6 +2,7 @@ const express = require('express');
 const morgan = require('morgan');
 const flash = require('express-flash');
 const session = require('express-session');
+const { body, validationResult } = require('express-validator');
 
 const app = express();
 const host = 'localhost';
@@ -69,33 +70,36 @@ app.get('/lists/new', (req, res) => {
   res.render('new-list');
 });
 
-app.post('/lists', (req, res) => {
-  let title = req.body.todoListTitle.trim();
-  if (title.length === 0) {
-    req.flash("error", "A title was not provided.");
-    res.render('new-list', {
-      flash: req.flash(),
-    });
-  } else if (title.length > 100) {
-    req.flash('error', 'List title must be between 1 and 100 characters.');
-    req.flash('error', 'stacking error msgs');
-    req.flash('error', 'another error msg');
-    res.render('new-list', {
-      flash: req.flash(),
-      todoListTitle: title,
-    })
-  } else if (todoLists.some(list => list.title === title)) {
-    req.flash('error', 'List title already exists.');
-    res.render('new-list', {
-      flash: req.flash(),
-      todoListTitle: title,
-    })
-  } else {
-    todoLists.push(new TodoList(title));
-    req.flash('success', `${title} todo list created!`);
-    res.redirect('/lists');
+app.post('/lists', 
+  [
+    body("todoListTitle")
+      .trim()
+      .isLength({ min: 1 })
+      .withMessage("The list title is required.")
+      .isLength({ max: 100 })
+      .withMessage("List title must be between 1 and 100 characters.")
+      .custom(title => {
+        let duplicate = todoLists.find(list => list.title === title);
+        return duplicate === undefined;
+      })
+      .withMessage("List title must be unique."),
+  ],
+  (req, res) => {
+    let errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      errors.array().forEach(message => req.flash("error", message.msg));
+      res.render("new-list", {
+        flash: req.flash(),
+        todoListTitle: req.body.todoListTitle,
+      });
+    } else {
+      let title = req.body.todoListTitle;
+      todoLists.push(new TodoList(title));
+      req.flash("success", `The todo list ${title} has been created.`);
+      res.redirect("/lists");
+    }
   }
-});
+);
 
 app.listen(port, host, () => {
   console.log(`Todos is listening on port ${port} of ${host}`);
