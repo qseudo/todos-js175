@@ -8,31 +8,20 @@ const app = express();
 const host = 'localhost';
 const port = 3000;
 
-const todoLists = require('./lib/seed-data.js');
-const TodoList = require('./lib/todolist.js');
+const todoLists = require('./lib/seed-data');
+const TodoList = require('./lib/todolist');
+const { sortTodoLists, sortTodos } = require('./lib/sort');
+const { runInNewContext } = require('vm');
 
-const sortByTitle = (todoListA, todoListB) => {
-  let titleA = todoListA.title.toLowerCase();
-  let titleB = todoListB.title.toLowerCase();
+const loadTodoList = todoListId => {
+  return todoLists.find(todoList => todoList.id === todoListId);
+};
 
-  if (titleA < titleB) {
-    return -1;
-  } else if (titleA > titleB) {
-    return 1;
-  } else {
-    return 0;
-  }
-}
+const loadTodo = (todoListId, todoId) => {
+  let todoList = loadTodoList(todoListId);
+  if (!todoList) return undefined;
 
-const sortTodoLists = todoLists => {
-  let done = todoLists
-    .filter(todoList => todoList.isDone())
-    .sort(sortByTitle);
-  let undone = todoLists
-    .filter(todoList => !todoList.isDone())
-    .sort(sortByTitle);
-
-  return [].concat(undone, done);
+  return todoList.findById(todoId);
 };
 
 app.set('views', './views');
@@ -100,6 +89,62 @@ app.post('/lists',
     }
   }
 );
+
+app.get('/lists/:todoListId', (req, res, next) => {
+  let listId = Number(req.params.todoListId);
+  let matchedList = loadTodoList(listId);
+
+  if (matchedList) {
+    res.render('list', {
+      todoList: matchedList,
+      todos: sortTodos(matchedList),
+    });
+  } else {
+    next(new Error('Not found.'));
+  }
+});
+
+app.post('/lists/:todoListId/todos/:todoId/toggle', (req, res, next) => {
+  let todoListId = Number(req.params.todoListId);
+  let todoId = Number(req.params.todoId);
+
+  let todo = loadTodo(todoListId, todoId);
+  let title = todo.title;
+
+  if (todo) {
+    if (todo.isDone()) {
+      todo.markUndone();
+      req.flash('success', `${title} marked not done!`);
+    } else {
+      todo.markDone();
+      req.flash('success', `${title} marked done!`);
+    }
+    res.redirect(`/lists/${todoListId}`);
+  } else {
+    next(new Error('Not found.'));
+  }
+});
+
+app.post('/lists/:todoListId/todos/:todoId/destroy', (req, res, next) => {
+  let todoListId = Number(req.params.todoListId);
+  let todoId = Number(req.params.todoId);
+  let todoList = loadTodoList(todoListId);
+
+  if (todoList) {
+    let todo = loadTodo(todoListId, todoId);
+    let idxOfTodo = todoList.findIndexOf(todo);
+    todoList.removeAt(idxOfTodo);
+    req.flash('success', `Removed ${todo.title}.`)
+    res.redirect(`/lists/${todoListId}`);
+  } else {
+    next(new Error('Not found.'));
+  }
+});
+
+app.use((err, req, res, _next) => {
+  console.log(err);
+  res.status(404).send(err.message);
+});
 
 app.listen(port, host, () => {
   console.log(`Todos is listening on port ${port} of ${host}`);
