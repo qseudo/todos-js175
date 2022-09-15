@@ -10,8 +10,8 @@ const port = 3000;
 
 const todoLists = require('./lib/seed-data');
 const TodoList = require('./lib/todolist');
+const Todo = require('./lib/todo');
 const { sortTodoLists, sortTodos } = require('./lib/sort');
-const { runInNewContext } = require('vm');
 
 const loadTodoList = todoListId => {
   return todoLists.find(todoList => todoList.id === todoListId);
@@ -153,6 +153,61 @@ app.post('/lists/:todoListId/complete_all', (req, res, next) => {
     todoList.markAllDone();
     req.flash('success', `All tasks in ${todoList.title} marked done!`);
     res.redirect(`/lists/${todoListId}`);
+  } else {
+    next(new Error('Not found.'));
+  }
+});
+
+app.post('/lists/:todoListId/todos',
+  [
+    body('todoTitle')
+      .trim()
+      .isLength({ min: 1 })
+      .withMessage('Todo title is required.')
+      .isLength({ max: 100 })
+      .withMessage('Todo title must be between 1 and 100 characters.')
+  ],
+  (req, res, next) => {
+    let todoListId = Number(req.params.todoListId);
+    let todoList = loadTodoList(todoListId);
+
+    if (!todoList) {
+      next(new Error('Not found.'));
+    } else {
+      let title = req.body.todoTitle;
+      let errors = validationResult(req);
+
+      if (!errors.isEmpty()) {
+        errors.array().forEach(error => req.flash('error', error.msg));
+      } else {
+        todoList.add(new Todo(title));
+        req.flash('success', `New todo ${title} has been added.`);
+      }
+
+      res.redirect(`/lists/${todoListId}`);
+    }
+});
+
+app.get('/lists/:todoListId/edit', (req, res, next) => {
+  let todoListId = Number(req.params.todoListId);
+  let todoList = loadTodoList(todoListId);
+
+  if (todoList) {
+    res.render('edit-list', { todoList });
+  } else {
+    next(new Error('Not found.'));
+  }
+});
+
+app.post('/lists/:todoListId/destroy', (req, res, next) => {
+  let todoListId = Number(req.params.todoListId);
+  let todoList = loadTodoList(todoListId);
+
+  if (todoList) {
+    let idxOfList = todoLists.findIndex(list => list === todoList);
+    todoLists.splice(idxOfList, 1);
+    req.flash('success', `Deleted ${todoList.title} list.`);
+    res.redirect('/lists');
   } else {
     next(new Error('Not found.'));
   }
