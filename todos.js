@@ -193,7 +193,7 @@ app.get('/lists/:todoListId/edit', (req, res, next) => {
   let todoList = loadTodoList(todoListId);
 
   if (todoList) {
-    res.render('edit-list', { todoList });
+    res.render('edit-list', { todoList, });
   } else {
     next(new Error('Not found.'));
   }
@@ -212,6 +212,44 @@ app.post('/lists/:todoListId/destroy', (req, res, next) => {
     next(new Error('Not found.'));
   }
 });
+
+app.post('/lists/:todoListId/edit',
+  [
+    body('todoListTitle')
+      .trim()
+      .isLength({ min: 1})
+      .withMessage('Todo list must have a title.')
+      .isLength({ max: 100 })
+      .withMessage('Todo list title must between 1 and 100 characters.')
+      .custom(title => {
+        let duplicate = todoLists.find(list => list.title === title);
+        return duplicate === undefined;
+      })
+      .withMessage('Todo List with that title already exists.'),
+  ],
+  (req, res, next) => {
+    let todoListId = Number(req.params.todoListId);
+    let todoList = loadTodoList(todoListId);
+
+    if (todoList) {
+      let errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        errors.array().forEach(error => req.flash('error', error.msg));
+        res.render('edit-list', {
+          flash: req.flash(),
+          todoListTitle: req.body.todoListTitle,
+          todoList: todoList
+        });
+      } else {
+        let title = req.body.todoListTitle;
+        todoList.setTitle(title);
+        req.flash('success', `Change title of list to ${title}.`);
+        res.redirect(`/lists/${todoListId}`);
+      }
+    } else {
+      next(new Error('Not found.'));
+    }
+  });
 
 app.use((err, req, res, _next) => {
   console.log(err);
